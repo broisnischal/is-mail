@@ -174,3 +174,23 @@ const result = await checkEmail("someone@gmail.com", {
 bun run build
 bun test
 ```
+
+## Repo automation
+
+This repo is set up with CI + Changesets release automation:
+
+- CI runs on every push/PR (`build` + `test` + changeset checks).
+- Changesets tracks version bumps and changelog entries.
+- Release workflow creates a release PR on `master` and publishes to npm when merged.
+
+### Maintainer setup
+
+Add this repository secret in GitHub:
+
+- `NPM_TOKEN`: npm automation token with publish access for `is-mail`.
+
+Create a changeset for any user-facing change:
+
+```bash
+bun run changeset
+```

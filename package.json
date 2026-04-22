@@ -28,10 +28,14 @@
   "scripts": {
     "build": "obuild ./src/index.ts",
     "test": "bun test",
-    "test:email": "bun run ./scripts/test-email-cli.ts"
+    "test:email": "bun run ./scripts/test-email-cli.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@changesets/cli": "latest",
     "obuild": "latest"
   },
   "peerDependencies": {
