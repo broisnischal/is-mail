@@ -10,6 +10,14 @@ export const INVALID_REASON_DOMAIN_POPULAR_TYPO = "domain_popular_typo";
 export const INVALID_REASON_DNS_TIMEOUT = "dns_timeout";
 export const INVALID_REASON_DNS_ERROR = "dns_error";
 export const INVALID_REASON_DOMAIN_NOT_FOUND = "domain_not_found";
+export const INVALID_REASON_SMTP_MAILBOX_NOT_FOUND = "smtp_mailbox_not_found";
+export const INVALID_REASON_SMTP_UNVERIFIABLE = "smtp_unverifiable";
+
+export type SmtpProbeStatus =
+  | "exists"
+  | "not_exists"
+  | "catch_all"
+  | "unverifiable";
 
 export type FailReason =
   | typeof INVALID_REASON_AMOUNT_OF_AT
@@ -21,7 +29,9 @@ export type FailReason =
   | typeof INVALID_REASON_DOMAIN_POPULAR_TYPO
   | typeof INVALID_REASON_DNS_TIMEOUT
   | typeof INVALID_REASON_DNS_ERROR
-  | typeof INVALID_REASON_DOMAIN_NOT_FOUND;
+  | typeof INVALID_REASON_DOMAIN_NOT_FOUND
+  | typeof INVALID_REASON_SMTP_MAILBOX_NOT_FOUND
+  | typeof INVALID_REASON_SMTP_UNVERIFIABLE;
 
 export interface EmailCheckResult {
   /** The original email passed in */
@@ -39,11 +49,20 @@ export interface EmailCheckResult {
     syntax: boolean;
     disposable: boolean;
     dns: boolean;
+    smtp: boolean;
   };
   /** MX records found (populated when dns check runs) */
   mxRecords?: string[];
   /** Time taken in milliseconds */
   durationMs: number;
+  /** Optional SMTP mailbox probe metadata */
+  smtp?: {
+    attempted: boolean;
+    status: SmtpProbeStatus;
+    host?: string;
+    code?: number;
+    response?: string;
+  };
 }
 
 export interface BulkCheckResult {
@@ -116,4 +135,38 @@ export interface MailProbeOptions {
 
   /** Custom MX resolver override */
   mxResolver?: (domain: string) => Promise<string[] | false>;
+
+  /** Enable SMTP RCPT probe without sending email body */
+  smtpProbe?: boolean;
+
+  /** SMTP probe timeout in ms. Default: 2500 */
+  smtpProbeTimeoutMs?: number;
+
+  /** SMTP HELO/EHLO domain. Default: localhost */
+  smtpProbeHeloDomain?: string;
+
+  /** SMTP MAIL FROM identity. Default: probe@localhost */
+  smtpProbeMailFrom?: string;
+
+  /** Maximum MX hosts to probe. Default: 1 */
+  smtpProbeMaxMxHosts?: number;
+
+  /** Probe random address to detect catch-all domains. Default: true */
+  smtpProbeCatchAllCheck?: boolean;
+
+  /** Custom SMTP probe client override (useful for testing) */
+  smtpProbeClient?: (args: {
+    email: string;
+    mxRecords: string[];
+    timeoutMs: number;
+    heloDomain: string;
+    mailFrom: string;
+    maxMxHosts: number;
+    catchAllCheck: boolean;
+  }) => Promise<{
+    status: SmtpProbeStatus;
+    host?: string;
+    code?: number;
+    response?: string;
+  }>;
 }

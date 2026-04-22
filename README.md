@@ -1,6 +1,6 @@
 # is-mail
 
-Fast email validation with configurable checks: syntax, typo detection, domain blocklists, disposable-domain filtering, and MX DNS validation.
+Fast email validation with configurable checks: syntax, typo detection, domain blocklists, disposable-domain filtering, MX DNS validation, and optional SMTP RCPT probing.
 
 - Built with [`obuild`](https://github.com/unjs/obuild)
 - Works in Bun and Node.js runtimes
@@ -15,6 +15,7 @@ Most apps need more than regex. `is-mail` helps you:
 - block disposable/temporary providers
 - enforce your own blocked domains
 - validate that a domain can actually receive mail (MX records)
+- optionally probe mailbox acceptance via SMTP (no email body is sent)
 
 ## Install
 
@@ -89,10 +90,30 @@ await checkEmail("user@company.com", {
   mxResolver: async (domain) => {
     return domain === "example.com" ? ["mail.example.com"] : [];
   },
+  smtpProbe: false, // enable mailbox probe
+  smtpProbeTimeoutMs: 2500, // timeout in milliseconds
+  smtpProbeHeloDomain: "localhost",
+  smtpProbeMailFrom: "probe@localhost",
+  smtpProbeMaxMxHosts: 1, // keep low for speed
+  smtpProbeCatchAllCheck: true,
 });
 ```
 
 `usePopularMxCache` helps reduce cold DNS latency for common providers by seeding known MX entries.
+
+When `smtpProbe` is enabled, the checker performs SMTP handshake up to `RCPT TO` and stops before `DATA` (no message body sent).
+
+## SMTP probe example (fast mode)
+
+```ts
+const result = await checkEmail("someone@gmail.com", {
+  smtpProbe: true,
+  smtpProbeTimeoutMs: 1500,
+  smtpProbeMaxMxHosts: 1,
+});
+
+console.log(result.valid, result.smtp?.status);
+```
 
 ## Custom error messages
 

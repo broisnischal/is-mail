@@ -6,6 +6,8 @@ import {
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
   INVALID_REASON_NO_DNS_MX_RECORDS,
+  INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
+  INVALID_REASON_SMTP_UNVERIFIABLE,
   checkEmail,
   clearMxCache,
 } from "../src/index";
@@ -165,4 +167,69 @@ test("uses custom popular cache override", async () => {
   });
   expect(result.valid).toBe(true);
   expect(result.mxRecords).toEqual(["mx1.company.tld"]);
+});
+
+test("smtp probe marks mailbox as not existing", async () => {
+  const result = await checkEmail("someone@mxprobe.tld", {
+    smtpProbe: true,
+    mxResolver: async () => ["mx.mxprobe.tld"],
+    smtpProbeClient: async () => ({
+      status: "not_exists",
+      code: 550,
+      response: "Mailbox unavailable",
+      host: "mx.mxprobe.tld",
+    }),
+  });
+  expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_SMTP_MAILBOX_NOT_FOUND);
+  expect(result.checks.smtp).toBe(true);
+});
+
+test("smtp probe marks mailbox as unverifiable", async () => {
+  const result = await checkEmail("someone@mxprobe.tld", {
+    smtpProbe: true,
+    mxResolver: async () => ["mx.mxprobe.tld"],
+    smtpProbeClient: async () => ({
+      status: "unverifiable",
+      response: "Connection refused",
+      host: "mx.mxprobe.tld",
+    }),
+  });
+  expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_SMTP_UNVERIFIABLE);
+});
+
+test("smtp probe accepts existing mailbox", async () => {
+  const result = await checkEmail("someone@mxprobe.tld", {
+    smtpProbe: true,
+    mxResolver: async () => ["mx.mxprobe.tld"],
+    smtpProbeClient: async () => ({
+      status: "exists",
+      code: 250,
+      response: "OK",
+      host: "mx.mxprobe.tld",
+    }),
+  });
+  expect(result.valid).toBe(true);
+  expect(result.message).toBe("Mailbox accepted by SMTP RCPT probe");
+});
+
+test("smtp probe timeout option is forwarded in ms", async () => {
+  let seenTimeout = 0;
+  const result = await checkEmail("someone@mxprobe.tld", {
+    smtpProbe: true,
+    smtpProbeTimeoutMs: 1234,
+    mxResolver: async () => ["mx.mxprobe.tld"],
+    smtpProbeClient: async (args) => {
+      seenTimeout = args.timeoutMs;
+      return { status: "exists", code: 250, host: "mx.mxprobe.tld" };
+    },
+  });
+  expect(result.valid).toBe(true);
+  expect(seenTimeout).toBe(1234);
+});
+
+test("gmail mailbox sample is treated as valid", async () => {
+  const result = await checkEmail("nischaldahal01395@gmail.com");
+  expect(result.valid).toBe(true);
 });

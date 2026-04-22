@@ -14,11 +14,14 @@ export {
   INVALID_REASON_DNS_TIMEOUT,
   INVALID_REASON_DNS_ERROR,
   INVALID_REASON_DOMAIN_NOT_FOUND,
+  INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
+  INVALID_REASON_SMTP_UNVERIFIABLE,
 } from "./type.js";
 
 export type {
   CheckLevel,
   FailReason,
+  SmtpProbeStatus,
   EmailCheckResult,
   BulkCheckResult,
   MailProbeOptions,

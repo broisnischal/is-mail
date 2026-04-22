@@ -1,7 +1,10 @@
 import { validateSyntax } from "./syntax.js";
 import { isDisposable } from "./disposable.js";
 import { lookupMx } from "./dns.js";
+import { probeSmtpMailbox } from "./smtp.js";
 import {
+  INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
+  INVALID_REASON_SMTP_UNVERIFIABLE,
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
   INVALID_REASON_USERNAME_VENDOR_RULES,
@@ -27,6 +30,12 @@ const DEFAULT_OPTIONS = {
   skipCache: false,
   usePopularMxCache: true,
   popularMxCache: {},
+  smtpProbe: false,
+  smtpProbeTimeoutMs: 2500,
+  smtpProbeHeloDomain: "localhost",
+  smtpProbeMailFrom: "probe@localhost",
+  smtpProbeMaxMxHosts: 1,
+  smtpProbeCatchAllCheck: true,
 } satisfies Omit<MailProbeOptions, "mxResolver">;
 
 const POPULAR_DOMAIN_TYPOS: Record<string, string> = {
@@ -55,7 +64,7 @@ export async function checkEmail(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const start = performance.now();
 
-  const checksRan = { syntax: false, disposable: false, dns: false };
+  const checksRan = { syntax: false, disposable: false, dns: false, smtp: false };
 
   checksRan.syntax = true;
   const syntax = validateSyntax(email);
@@ -173,6 +182,81 @@ export async function checkEmail(
         message: mxResult.message,
         checks: checksRan,
         durationMs,
+      };
+    }
+
+    if (opts.smtpProbe) {
+      checksRan.smtp = true;
+      const smtpClient = opts.smtpProbeClient ?? probeSmtpMailbox;
+      const smtpResult = await smtpClient({
+        email,
+        mxRecords: mxResult.mxRecords ?? [],
+        timeoutMs: opts.smtpProbeTimeoutMs,
+        heloDomain: opts.smtpProbeHeloDomain,
+        mailFrom: opts.smtpProbeMailFrom,
+        maxMxHosts: opts.smtpProbeMaxMxHosts,
+        catchAllCheck: opts.smtpProbeCatchAllCheck,
+      });
+
+      const smtpDurationMs = +(performance.now() - start).toFixed(2);
+
+      if (smtpResult.status === "not_exists") {
+        return {
+          email,
+          valid: false,
+          reasonId: INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
+          reason: INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
+          message: "Mailbox rejected by SMTP RCPT probe",
+          checks: checksRan,
+          mxRecords: mxResult.mxRecords,
+          durationMs: smtpDurationMs,
+          smtp: {
+            attempted: true,
+            status: smtpResult.status,
+            host: smtpResult.host,
+            code: smtpResult.code,
+            response: smtpResult.response,
+          },
+        };
+      }
+
+      if (smtpResult.status === "unverifiable") {
+        return {
+          email,
+          valid: false,
+          reasonId: INVALID_REASON_SMTP_UNVERIFIABLE,
+          reason: INVALID_REASON_SMTP_UNVERIFIABLE,
+          message: "SMTP probe could not verify mailbox existence",
+          checks: checksRan,
+          mxRecords: mxResult.mxRecords,
+          durationMs: smtpDurationMs,
+          smtp: {
+            attempted: true,
+            status: smtpResult.status,
+            host: smtpResult.host,
+            code: smtpResult.code,
+            response: smtpResult.response,
+          },
+        };
+      }
+
+      return {
+        email,
+        valid: true,
+        message:
+          smtpResult.status === "catch_all"
+            ? "Mailbox accepted, but domain appears catch-all"
+            : "Mailbox accepted by SMTP RCPT probe",
+        checks: checksRan,
+        mxRecords: mxResult.mxRecords,
+        durationMs: smtpDurationMs,
+        smtp: {
+          attempted: true,
+          status: smtpResult.status,
+          host: smtpResult.host,
+          code: smtpResult.code,
+          response: smtpResult.response,
+        },
       };
     }
 
