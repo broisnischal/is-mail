@@ -1,0 +1,8 @@
+src/
+test/
+scripts/
+.github/
+.changeset/
+tsconfig.json
+CLAUDE.md
+*.ts
