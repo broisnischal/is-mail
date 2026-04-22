@@ -7,7 +7,6 @@ import {
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
   INVALID_REASON_NO_DNS_MX_RECORDS,
   INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
-  INVALID_REASON_SMTP_UNVERIFIABLE,
   checkEmail,
   clearMxCache,
 } from "../src/index";
@@ -195,8 +194,9 @@ test("smtp probe marks mailbox as unverifiable", async () => {
       host: "mx.mxprobe.tld",
     }),
   });
-  expect(result.valid).toBe(false);
-  expect(result.reasonId).toBe(INVALID_REASON_SMTP_UNVERIFIABLE);
+  expect(result.valid).toBe(true);
+  expect(result.reasonId).toBeUndefined();
+  expect(result.smtp?.status).toBe("unverifiable");
 });
 
 test("smtp probe accepts existing mailbox", async () => {
@@ -234,12 +234,17 @@ test("gmail mailbox sample is treated as valid", async () => {
   expect(result.valid).toBe(true);
 });
 
-test("gmail mailbox sample is treated as invalid", async () => {
-  const result = await checkEmail(
-    "nischaasdfasdfasdfasdfasdfasdfasdfldadfdffdshal01395@gmail.com",
-    {
-      smtpProbe: true,
-    },
-  );
+test("smtp not_exists response marks mailbox as invalid", async () => {
+  const result = await checkEmail("unknownuser123@gmail.com", {
+    smtpProbe: true,
+    mxResolver: async () => ["gmail-smtp-in.l.google.com"],
+    smtpProbeClient: async () => ({
+      status: "not_exists",
+      code: 550,
+      response: "Mailbox unavailable",
+      host: "gmail-smtp-in.l.google.com",
+    }),
+  });
   expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_SMTP_MAILBOX_NOT_FOUND);
 });

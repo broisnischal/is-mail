@@ -102,6 +102,7 @@ await checkEmail("user@company.com", {
 `usePopularMxCache` helps reduce cold DNS latency for common providers by seeding known MX entries.
 
 When `smtpProbe` is enabled, the checker performs SMTP handshake up to `RCPT TO` and stops before `DATA` (no message body sent).
+If SMTP probing is temporarily unavailable or timed out, the result remains valid when MX checks pass, and the `smtp.status` is `unverifiable`.
 
 ## SMTP probe example (fast mode)
 

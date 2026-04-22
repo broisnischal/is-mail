@@ -4,7 +4,6 @@ import { lookupMx } from "./dns.js";
 import { probeSmtpMailbox } from "./smtp.js";
 import {
   INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
-  INVALID_REASON_SMTP_UNVERIFIABLE,
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
   INVALID_REASON_USERNAME_VENDOR_RULES,
@@ -223,10 +222,8 @@ export async function checkEmail(
       if (smtpResult.status === "unverifiable") {
         return {
           email,
-          valid: false,
-          reasonId: INVALID_REASON_SMTP_UNVERIFIABLE,
-          reason: INVALID_REASON_SMTP_UNVERIFIABLE,
-          message: "SMTP probe could not verify mailbox existence",
+          valid: true,
+          message: "SMTP probe could not verify mailbox existence; treating as domain-valid",
           checks: checksRan,
           mxRecords: mxResult.mxRecords,
           durationMs: smtpDurationMs,
