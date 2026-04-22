@@ -8,7 +8,7 @@ Use Changesets for all user-facing changes.
 bun run changeset
 ```
 
-Select `is-mail` and choose the version bump (`patch`, `minor`, or `major`), then describe the change.
+Select `mailcheckr` and choose the version bump (`patch`, `minor`, or `major`), then describe the change.
 
 ## Release flow
 

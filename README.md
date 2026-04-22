@@ -1,4 +1,4 @@
-# is-mail
+# mailcheckr
 
 Fast email validation with configurable checks: syntax, typo detection, domain blocklists, disposable-domain filtering, MX DNS validation, and optional SMTP RCPT probing.
 
@@ -8,7 +8,7 @@ Fast email validation with configurable checks: syntax, typo detection, domain b
 
 ## What problem this solves
 
-Most apps need more than regex. `is-mail` helps you:
+Most apps need more than regex. `mailcheckr` helps you:
 
 - reject malformed addresses early
 - prevent typo domains (`hotnail.com` -> `hotmail.com`)
@@ -20,7 +20,7 @@ Most apps need more than regex. `is-mail` helps you:
 ## Install
 
 ```bash
-bun add is-mail
+bun add mailcheckr
 ```
 
 For local development in this repo:
@@ -32,7 +32,7 @@ bun install
 ## Basic usage
 
 ```ts
-import { checkEmail } from "is-mail";
+import { checkEmail } from "mailcheckr";
 
 const result = await checkEmail("someone@gmail.com");
 
@@ -127,15 +127,18 @@ import {
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
   INVALID_REASON_USERNAME_VENDOR_RULES,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
-} from "is-mail";
+} from "mailcheckr";
 
 const customReasons = {
   [INVALID_REASON_AMOUNT_OF_AT]: "Email must contain exactly one @ symbol",
-  [INVALID_REASON_USERNAME_GENERAL_RULES]: "Username contains invalid characters",
+  [INVALID_REASON_USERNAME_GENERAL_RULES]:
+    "Username contains invalid characters",
   [INVALID_REASON_DOMAIN_GENERAL_RULES]: "Domain name is invalid",
-  [INVALID_REASON_NO_DNS_MX_RECORDS]: "Domain does not have mail server records",
+  [INVALID_REASON_NO_DNS_MX_RECORDS]:
+    "Domain does not have mail server records",
   [INVALID_REASON_DOMAIN_IN_BLOCKLIST]: "This email domain is not allowed",
-  [INVALID_REASON_USERNAME_VENDOR_RULES]: "Username does not meet provider requirements",
+  [INVALID_REASON_USERNAME_VENDOR_RULES]:
+    "Username does not meet provider requirements",
   [INVALID_REASON_DOMAIN_POPULAR_TYPO]:
     "Domain appears to be a typo (did you mean gmail.com?)",
 };
@@ -150,7 +153,7 @@ if (!result.valid) {
 
 ```ts
 import { resolveMx } from "dns/promises";
-import { checkEmail } from "is-mail";
+import { checkEmail } from "mailcheckr";
 
 async function nodeResolver(emailDomain: string): Promise<string[] | false> {
   try {
@@ -173,24 +176,4 @@ const result = await checkEmail("someone@gmail.com", {
 ```bash
 bun run build
 bun test
-```
-
-## Repo automation
-
-This repo is set up with CI + Changesets release automation:
-
-- CI runs on every push/PR (`build` + `test` + changeset checks).
-- Changesets tracks version bumps and changelog entries.
-- Release workflow creates a release PR on `master` and publishes to npm when merged.
-
-### Maintainer setup
-
-Add this repository secret in GitHub:
-
-- `NPM_TOKEN`: npm automation token with publish access for `is-mail`.
-
-Create a changeset for any user-facing change:
-
-```bash
-bun run changeset
 ```

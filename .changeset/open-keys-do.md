@@ -1,5 +1,5 @@
 ---
-"is-mail": minor
+"mailcheckr": minor
 ---
 
 release in npm
