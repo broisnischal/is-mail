@@ -1,0 +1,40 @@
+{
+  "name": "is-mail",
+  "version": "0.1.0",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "main": "dist/index.mjs",
+  "type": "module",
+  "private": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "email",
+    "email-validation",
+    "mx",
+    "dns",
+    "disposable-email",
+    "bun"
+  ],
+  "scripts": {
+    "build": "obuild ./src/index.ts",
+    "test": "bun test",
+    "test:email": "bun run ./scripts/test-email-cli.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "obuild": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
