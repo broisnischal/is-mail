@@ -2,6 +2,8 @@
 
 Fast email validation with configurable checks: syntax, typo detection, domain blocklists, disposable-domain filtering, MX DNS validation, and optional SMTP RCPT probing.
 
+This library is designed for practical validation (signup/contact workflows), not full RFC-5321/5322 edge-case compliance.
+
 - Built with [`obuild`](https://github.com/unjs/obuild)
 - Works in Bun and Node.js runtimes
 - Designed to reduce network bottlenecks with cache, retries, and custom resolvers
@@ -92,14 +94,13 @@ await checkEmail("user@company.com", {
   },
   smtpProbe: false, // enable mailbox probe
   smtpProbeTimeoutMs: 2500, // timeout in milliseconds
-  smtpProbeHeloDomain: "localhost",
-  smtpProbeMailFrom: "probe@localhost",
   smtpProbeMaxMxHosts: 1, // keep low for speed
   smtpProbeCatchAllCheck: true,
 });
 ```
 
 `usePopularMxCache` helps reduce cold DNS latency for common providers by seeding known MX entries.
+`dohProviderUrl` and `dnsServer` are restricted to trusted allowlisted providers.
 
 When `smtpProbe` is enabled, the checker performs SMTP handshake up to `RCPT TO` and stops before `DATA` (no message body sent).
 If SMTP probing is temporarily unavailable or timed out, the result remains valid when MX checks pass, and the `smtp.status` is `unverifiable`.

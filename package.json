@@ -1,6 +1,21 @@
 {
   "name": "mailcheckr",
   "version": "0.2.1",
+  "description": "Fast email validation with configurable syntax, DNS, disposable, and SMTP checks.",
+  "author": {
+    "name": "Nischal Dahal",
+    "email": "nischaldahal01395@gmail.com",
+    "url": "https://github.com/broisnischal"
+  },
+  "homepage": "https://github.com/broisnischal/mailcheckr#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/broisnischal/mailcheckr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/broisnischal/mailcheckr/issues"
+  },
+  "license": "MIT",
   "module": "dist/index.mjs",
   "types": "dist/index.d.mts",
   "main": "dist/index.mjs",

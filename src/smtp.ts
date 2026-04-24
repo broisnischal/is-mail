@@ -23,6 +23,15 @@ export interface SmtpProbeOutput {
   response?: string;
 }
 
+const SAFE_HELO = /^[a-zA-Z0-9.\-]+$/;
+const SAFE_MAIL_FROM = /^[^<>\r\n]*$/;
+const MX_HOST_RE = /^(?=.{1,253}$)(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$/;
+const BLOCKED_HOST_PATTERNS =
+  /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|169\.254\.|localhost$)/i;
+const SMTP_PROBE_RATE_LIMIT_WINDOW_MS = 60_000;
+const SMTP_PROBE_RATE_LIMIT_MAX = 60;
+const smtpProbeTimestamps: number[] = [];
+
 function parseAddress(email: string): { local: string; domain: string } {
   const atIndex = email.lastIndexOf("@");
   return { local: email.slice(0, atIndex), domain: email.slice(atIndex + 1) };
@@ -131,9 +140,9 @@ async function probeHost(
 
         if (input.catchAllCheck) {
           const { domain } = parseAddress(input.email);
-          const randomLocal = `probe-${Math.random().toString(36).slice(2, 14)}`;
+          const probeAddr = `probe-${Math.random().toString(36).slice(2, 14)}@${domain}`;
           const catchAllRcpt = await sendCommand(
-            `RCPT TO:<${randomLocal}@${domain}>`,
+            `RCPT TO:<${probeAddr}>`,
             [250, 251, 252, 450, 451, 452, 550, 551, 552, 553, 554],
           );
           if (catchAllRcpt.code < 450) {
@@ -172,7 +181,38 @@ async function probeHost(
 export async function probeSmtpMailbox(
   input: SmtpProbeInput,
 ): Promise<SmtpProbeOutput> {
-  const hosts = input.mxRecords.slice(0, Math.max(1, input.maxMxHosts));
+  if (!SAFE_HELO.test(input.heloDomain)) {
+    throw new Error("Invalid heloDomain");
+  }
+  if (!SAFE_MAIL_FROM.test(input.mailFrom)) {
+    throw new Error("Invalid mailFrom");
+  }
+
+  const now = Date.now();
+  while (
+    smtpProbeTimestamps.length > 0 &&
+    now - smtpProbeTimestamps[0]! > SMTP_PROBE_RATE_LIMIT_WINDOW_MS
+  ) {
+    smtpProbeTimestamps.shift();
+  }
+  if (smtpProbeTimestamps.length >= SMTP_PROBE_RATE_LIMIT_MAX) {
+    return {
+      status: "unverifiable",
+      response: "SMTP probe rate limit exceeded",
+    };
+  }
+  smtpProbeTimestamps.push(now);
+
+  const hosts = input.mxRecords
+    .filter((host) => MX_HOST_RE.test(host) && !BLOCKED_HOST_PATTERNS.test(host))
+    .slice(0, Math.max(1, input.maxMxHosts));
+  if (hosts.length === 0) {
+    return {
+      status: "unverifiable",
+      response: "No allowed MX hosts available for SMTP probe",
+    };
+  }
+
   let lastUnverifiable: SmtpProbeOutput = { status: "unverifiable" };
   for (const host of hosts) {
     const result = await probeHost(host, input);

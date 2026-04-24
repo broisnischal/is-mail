@@ -1,15 +1,19 @@
 import { beforeEach, expect, test } from "bun:test";
 import {
   INVALID_REASON_AMOUNT_OF_AT,
+  INVALID_REASON_DOMAIN_DISPOSABLE,
   INVALID_REASON_DNS_ERROR,
   INVALID_REASON_DNS_TIMEOUT,
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
+  INVALID_REASON_USERNAME_GENERAL_RULES,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
   INVALID_REASON_NO_DNS_MX_RECORDS,
   INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
   checkEmail,
+  checkEmails,
   clearMxCache,
 } from "../src/index";
+import { probeSmtpMailbox } from "../src/smtp";
 
 beforeEach(() => {
   clearMxCache();
@@ -19,6 +23,19 @@ test("rejects invalid syntax with reason id", async () => {
   const result = await checkEmail("not-an-email");
   expect(result.valid).toBe(false);
   expect(result.reasonId).toBe(INVALID_REASON_AMOUNT_OF_AT);
+});
+
+test("sets reason id for max-length syntax failure", async () => {
+  const local = "a".repeat(245);
+  const result = await checkEmail(`${local}@example.com`, { checkMx: false });
+  expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_USERNAME_GENERAL_RULES);
+});
+
+test("rejects consecutive dots in local part", async () => {
+  const result = await checkEmail("a..b@example.com", { checkMx: false });
+  expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_USERNAME_GENERAL_RULES);
 });
 
 test("blocks listed domains", async () => {
@@ -57,6 +74,15 @@ test("supports no records via custom resolver", async () => {
 
 test("can disable disposable check", async () => {
   const result = await checkEmail("user@mailinator.com", {
+    checkDisposable: false,
+    checkMx: false,
+  });
+  expect(result.valid).toBe(true);
+});
+
+test("can disable custom blocklist check", async () => {
+  const result = await checkEmail("user@disposable-email.com", {
+    checkBlocklist: false,
     checkDisposable: false,
     checkMx: false,
   });
@@ -234,6 +260,14 @@ test("gmail mailbox sample is treated as valid", async () => {
   expect(result.valid).toBe(true);
 });
 
+test("disposable domains use dedicated reason id", async () => {
+  const result = await checkEmail("sundargautam6@yopmail.com", {
+    checkMx: false,
+  });
+  expect(result.valid).toBe(false);
+  expect(result.reasonId).toBe(INVALID_REASON_DOMAIN_DISPOSABLE);
+});
+
 test("smtp not_exists response marks mailbox as invalid", async () => {
   const result = await checkEmail("unknownuser123@gmail.com", {
     smtpProbe: true,
@@ -247,4 +281,94 @@ test("smtp not_exists response marks mailbox as invalid", async () => {
   });
   expect(result.valid).toBe(false);
   expect(result.reasonId).toBe(INVALID_REASON_SMTP_MAILBOX_NOT_FOUND);
+});
+
+test("rejects unsafe smtp helo domain", async () => {
+  await expect(
+    probeSmtpMailbox({
+      email: "user@example.com",
+      mxRecords: ["mx.example.com"],
+      timeoutMs: 100,
+      heloDomain: "bad\r\nINJECT",
+      mailFrom: "probe@example.com",
+      maxMxHosts: 1,
+      catchAllCheck: false,
+    }),
+  ).rejects.toThrow("Invalid heloDomain");
+});
+
+test("rejects unsafe smtp mail from", async () => {
+  await expect(
+    probeSmtpMailbox({
+      email: "user@example.com",
+      mxRecords: ["mx.example.com"],
+      timeoutMs: 100,
+      heloDomain: "example.com",
+      mailFrom: "bad>\r\nx",
+      maxMxHosts: 1,
+      catchAllCheck: false,
+    }),
+  ).rejects.toThrow("Invalid mailFrom");
+});
+
+test("rejects private dnsServer targets", async () => {
+  await expect(
+    checkEmail("someone@example.com", {
+      dnsServer: "127.0.0.1",
+      usePopularMxCache: false,
+      skipCache: true,
+      mxResolver: async () => ["mx.example.com"],
+    }),
+  ).rejects.toThrow("dnsServer targets a private/internal address");
+});
+
+test("rejects private dohProviderUrl targets", async () => {
+  await expect(
+    checkEmail("someone@example.com", {
+      dohProviderUrl: "http://127.0.0.1/dns-query",
+      usePopularMxCache: false,
+      skipCache: true,
+      mxResolver: async () => ["mx.example.com"],
+    }),
+  ).rejects.toThrow("dohProviderUrl targets a private/internal address");
+});
+
+test("rejects non-allowlisted dnsServer", async () => {
+  await expect(
+    checkEmail("someone@example.com", {
+      dnsServer: "9.9.9.9",
+      usePopularMxCache: false,
+      skipCache: true,
+      mxResolver: async () => ["mx.example.com"],
+    }),
+  ).rejects.toThrow("dnsServer is not in trusted DNS allowlist");
+});
+
+test("rejects non-allowlisted dohProviderUrl", async () => {
+  await expect(
+    checkEmail("someone@example.com", {
+      dohProviderUrl: "https://dns.quad9.net/dns-query",
+      usePopularMxCache: false,
+      skipCache: true,
+      mxResolver: async () => ["mx.example.com"],
+    }),
+  ).rejects.toThrow("dohProviderUrl is not in trusted DoH allowlist");
+});
+
+test("checkEmails enforces max email batch size", async () => {
+  const emails = Array.from({ length: 1001 }, (_, i) => `user${i}@example.com`);
+  await expect(checkEmails(emails)).rejects.toThrow("Too many emails");
+});
+
+test("disposable list has no duplicate entries", async () => {
+  const file = await Bun.file(new URL("../src/disposable.ts", import.meta.url)).text();
+  const matches = [...file.matchAll(/"([^"]+)"/g)].map((m) => m[1]!.toLowerCase());
+  const counts = new Map<string, number>();
+  for (const domain of matches) {
+    counts.set(domain, (counts.get(domain) ?? 0) + 1);
+  }
+  const dupes = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([domain]) => domain);
+  expect(dupes).toEqual([]);
 });

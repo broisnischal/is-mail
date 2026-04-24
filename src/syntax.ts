@@ -9,13 +9,13 @@ import {
  * Zero deps, <1ms.
  */
 
-// Local part: letters, digits, and these special chars (no consecutive dots, no leading/trailing dot)
+// Local part: RFC-safe characters, with explicit dot-sequence checks below
 const LOCAL_RE =
-  /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
+  /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]([a-zA-Z0-9!#$%&'*+/=?^_`{|}~.-]*[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-])?$/;
 
-// Domain: valid hostname segments separated by dots, at least one dot
+// Domain: linear-time hostname validation (no nested quantifier backtracking)
 const DOMAIN_RE =
-  /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+  /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 
 export interface SyntaxResult {
   valid: boolean;
@@ -38,7 +38,11 @@ export function validateSyntax(email: string): SyntaxResult {
 
   // Length limits per RFC 5321
   if (trimmed.length > 254) {
-    return { valid: false, reason: "Email exceeds 254 character limit" };
+    return {
+      valid: false,
+      reason: "Email exceeds 254 character limit",
+      reasonId: INVALID_REASON_USERNAME_GENERAL_RULES,
+    };
   }
 
   const atCount = (trimmed.match(/@/g) ?? []).length;
@@ -83,6 +87,14 @@ export function validateSyntax(email: string): SyntaxResult {
     return {
       valid: false,
       reason: "Invalid characters in local part",
+      reasonId: INVALID_REASON_USERNAME_GENERAL_RULES,
+    };
+  }
+
+  if (local.includes("..")) {
+    return {
+      valid: false,
+      reason: "Local part cannot contain consecutive dots",
       reasonId: INVALID_REASON_USERNAME_GENERAL_RULES,
     };
   }

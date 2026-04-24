@@ -12,6 +12,9 @@ export const INVALID_REASON_DNS_ERROR = "dns_error";
 export const INVALID_REASON_DOMAIN_NOT_FOUND = "domain_not_found";
 export const INVALID_REASON_SMTP_MAILBOX_NOT_FOUND = "smtp_mailbox_not_found";
 export const INVALID_REASON_SMTP_UNVERIFIABLE = "smtp_unverifiable";
+export const INVALID_REASON_DOMAIN_DISPOSABLE = "domain_disposable";
+// Backward compatible alias
+export const INVALID_REASON_DISPOSABLE_DOMAIN = INVALID_REASON_DOMAIN_DISPOSABLE;
 
 export type SmtpProbeStatus =
   | "exists"
@@ -31,7 +34,8 @@ export type FailReason =
   | typeof INVALID_REASON_DNS_ERROR
   | typeof INVALID_REASON_DOMAIN_NOT_FOUND
   | typeof INVALID_REASON_SMTP_MAILBOX_NOT_FOUND
-  | typeof INVALID_REASON_SMTP_UNVERIFIABLE;
+  | typeof INVALID_REASON_SMTP_UNVERIFIABLE
+  | typeof INVALID_REASON_DOMAIN_DISPOSABLE;
 
 export interface EmailCheckResult {
   /** The original email passed in */
@@ -76,7 +80,22 @@ export interface BulkCheckResult {
   };
 }
 
-export interface MailProbeOptions {
+type SmtpProbeClient = (args: {
+  email: string;
+  mxRecords: string[];
+  timeoutMs: number;
+  heloDomain: string;
+  mailFrom: string;
+  maxMxHosts: number;
+  catchAllCheck: boolean;
+}) => Promise<{
+  status: SmtpProbeStatus;
+  host?: string;
+  code?: number;
+  response?: string;
+}>;
+
+interface MailProbeCoreOptions {
   /**
    * Validation level:
    * - "syntax"  → regex only, <1ms
@@ -93,12 +112,6 @@ export interface MailProbeOptions {
 
   /** Additional disposable domains to block */
   extraDisposableDomains?: string[];
-
-  /** Domains to block */
-  blocklistDomains?: string[];
-
-  /** Enable/disable domain blocklist check. Default: true */
-  checkBlocklist?: boolean;
 
   /** Enable/disable disposable domain check. Default: true */
   checkDisposable?: boolean;
@@ -136,37 +149,43 @@ export interface MailProbeOptions {
   /** Custom MX resolver override */
   mxResolver?: (domain: string) => Promise<string[] | false>;
 
-  /** Enable SMTP RCPT probe without sending email body */
-  smtpProbe?: boolean;
+}
 
+type BlocklistEnabledOptions = {
+  /** Enable/disable domain blocklist check. Default: true */
+  checkBlocklist?: true;
+  /** Domains to block */
+  blocklistDomains?: string[];
+};
+
+type BlocklistDisabledOptions = {
+  checkBlocklist: false;
+  blocklistDomains?: never;
+};
+
+type SmtpProbeEnabledOptions = {
+  /** Enable SMTP RCPT probe without sending email body */
+  smtpProbe: true;
+  /** SMTP probing requires MX checking to be enabled */
+  checkMx?: true;
   /** SMTP probe timeout in ms. Default: 2500 */
   smtpProbeTimeoutMs?: number;
-
-  /** SMTP HELO/EHLO domain. Default: localhost */
-  smtpProbeHeloDomain?: string;
-
-  /** SMTP MAIL FROM identity. Default: probe@localhost */
-  smtpProbeMailFrom?: string;
-
   /** Maximum MX hosts to probe. Default: 1 */
   smtpProbeMaxMxHosts?: number;
-
   /** Probe random address to detect catch-all domains. Default: true */
   smtpProbeCatchAllCheck?: boolean;
-
   /** Custom SMTP probe client override (useful for testing) */
-  smtpProbeClient?: (args: {
-    email: string;
-    mxRecords: string[];
-    timeoutMs: number;
-    heloDomain: string;
-    mailFrom: string;
-    maxMxHosts: number;
-    catchAllCheck: boolean;
-  }) => Promise<{
-    status: SmtpProbeStatus;
-    host?: string;
-    code?: number;
-    response?: string;
-  }>;
-}
+  smtpProbeClient?: SmtpProbeClient;
+};
+
+type SmtpProbeDisabledOptions = {
+  smtpProbe?: false;
+  smtpProbeTimeoutMs?: never;
+  smtpProbeMaxMxHosts?: never;
+  smtpProbeCatchAllCheck?: never;
+  smtpProbeClient?: never;
+};
+
+export type MailProbeOptions = MailProbeCoreOptions &
+  (BlocklistEnabledOptions | BlocklistDisabledOptions) &
+  (SmtpProbeEnabledOptions | SmtpProbeDisabledOptions);

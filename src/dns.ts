@@ -20,6 +20,18 @@ interface MxResult {
 }
 
 const mxCache = new Map<string, CacheEntry>();
+const BLOCKED_DNS_PATTERNS =
+  /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|169\.254\.|localhost$)/i;
+const ALLOWED_DOH_PROVIDERS = new Set([
+  "cloudflare-dns.com",
+  "dns.google",
+]);
+const ALLOWED_DNS_SERVERS = new Set([
+  "1.1.1.1",
+  "1.0.0.1",
+  "8.8.8.8",
+  "8.8.4.4",
+]);
 const POPULAR_MX_CACHE_SEED: Record<string, string[]> = {
   "gmail.com": ["gmail-smtp-in.l.google.com"],
   "googlemail.com": ["gmail-smtp-in.l.google.com"],
@@ -45,16 +57,46 @@ function getCached(domain: string): string[] | null {
     mxCache.delete(domain);
     return null;
   }
+  // LRU: move accessed key to the end
+  mxCache.delete(domain);
+  mxCache.set(domain, entry);
   return entry.mxRecords;
 }
 
 function setCached(domain: string, mxRecords: string[], ttl: number): void {
-  // Evict oldest if cache grows too large (simple LRU cap at 1000)
+  // LRU capacity cap at 1000
+  if (mxCache.has(domain)) {
+    mxCache.delete(domain);
+  }
   if (mxCache.size >= 1000) {
     const firstKey = mxCache.keys().next().value;
     if (firstKey) mxCache.delete(firstKey);
   }
   mxCache.set(domain, { mxRecords, expiresAt: Date.now() + ttl });
+}
+
+function assertSafeDnsTarget(value: string, fieldName: "dnsServer" | "dohProviderUrl"): void {
+  const target =
+    fieldName === "dohProviderUrl"
+      ? (() => {
+          try {
+            return new URL(value).hostname;
+          } catch {
+            throw new Error("Invalid dohProviderUrl");
+          }
+        })()
+      : value;
+
+  if (BLOCKED_DNS_PATTERNS.test(target)) {
+    throw new Error(`${fieldName} targets a private/internal address`);
+  }
+
+  if (fieldName === "dohProviderUrl" && !ALLOWED_DOH_PROVIDERS.has(target)) {
+    throw new Error("dohProviderUrl is not in trusted DoH allowlist");
+  }
+  if (fieldName === "dnsServer" && !ALLOWED_DNS_SERVERS.has(target)) {
+    throw new Error("dnsServer is not in trusted DNS allowlist");
+  }
 }
 
 export async function lookupMx(
@@ -82,6 +124,13 @@ export async function lookupMx(
     popularMxCache = {},
     mxResolver,
   } = options;
+
+  if (dnsServer) {
+    assertSafeDnsTarget(dnsServer, "dnsServer");
+  }
+  if (dohProviderUrl) {
+    assertSafeDnsTarget(dohProviderUrl, "dohProviderUrl");
+  }
 
   // Cache hit
   if (useCache) {
@@ -206,7 +255,7 @@ export async function lookupMx(
     const error = err as Error & { code?: string };
 
     if (error.message === "DNS_TIMEOUT") {
-      if (useCache) setCached(domain, [], cacheTtl / 10); // short-cache timeouts
+      if (useCache) setCached(domain, [], Math.min(5_000, Math.max(1_000, cacheTtl / 60)));
       return {
         valid: false,
         reason: INVALID_REASON_DNS_TIMEOUT,
@@ -226,7 +275,7 @@ export async function lookupMx(
 
     // ENODATA / ESERVFAIL etc — no MX records
     if (error.code === "ESERVFAIL" || error.code === "ECANCELLED") {
-      if (useCache) setCached(domain, [], cacheTtl / 5);
+      if (useCache) setCached(domain, [], Math.min(15_000, Math.max(3_000, cacheTtl / 20)));
       return {
         valid: false,
         reason: INVALID_REASON_DNS_ERROR,
@@ -242,7 +291,7 @@ export async function lookupMx(
       };
     }
 
-    if (useCache) setCached(domain, [], cacheTtl);
+    if (useCache) setCached(domain, [], Math.min(10_000, Math.max(2_000, cacheTtl / 30)));
     return {
       valid: false,
       reason: INVALID_REASON_NO_DNS_MX_RECORDS,

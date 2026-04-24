@@ -3,6 +3,8 @@ import { isDisposable } from "./disposable.js";
 import { lookupMx } from "./dns.js";
 import { probeSmtpMailbox } from "./smtp.js";
 import {
+  INVALID_REASON_DOMAIN_DISPOSABLE,
+  INVALID_REASON_USERNAME_GENERAL_RULES,
   INVALID_REASON_SMTP_MAILBOX_NOT_FOUND,
   INVALID_REASON_DOMAIN_IN_BLOCKLIST,
   INVALID_REASON_DOMAIN_POPULAR_TYPO,
@@ -16,7 +18,6 @@ const DEFAULT_OPTIONS = {
   timeout: 3000,
   dnsServer: "",
   extraDisposableDomains: [],
-  blocklistDomains: [],
   checkBlocklist: true,
   checkDisposable: true,
   checkTypo: true,
@@ -29,13 +30,15 @@ const DEFAULT_OPTIONS = {
   skipCache: false,
   usePopularMxCache: true,
   popularMxCache: {},
-  smtpProbe: false,
-  smtpProbeTimeoutMs: 2500,
-  smtpProbeHeloDomain: "localhost",
-  smtpProbeMailFrom: "probe@localhost",
-  smtpProbeMaxMxHosts: 1,
-  smtpProbeCatchAllCheck: true,
-} satisfies Omit<MailProbeOptions, "mxResolver">;
+} as const;
+
+const SMTP_DEFAULT_OPTIONS = {
+  timeoutMs: 2500,
+  heloDomain: "localhost",
+  mailFrom: "probe@localhost",
+  maxMxHosts: 1,
+  catchAllCheck: true,
+} as const;
 
 const POPULAR_DOMAIN_TYPOS: Record<string, string> = {
   "gmal.com": "gmail.com",
@@ -60,7 +63,11 @@ export async function checkEmail(
   email: string,
   options: MailProbeOptions = {},
 ): Promise<EmailCheckResult> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const opts = {
+    ...DEFAULT_OPTIONS,
+    ...options,
+    checkMx: options.smtpProbe ? true : (options.checkMx ?? DEFAULT_OPTIONS.checkMx),
+  };
   const start = performance.now();
 
   const checksRan = { syntax: false, disposable: false, dns: false, smtp: false };
@@ -69,7 +76,7 @@ export async function checkEmail(
   const syntax = validateSyntax(email);
 
   if (!syntax.valid) {
-    const reasonId = syntax.reasonId ?? INVALID_REASON_USERNAME_VENDOR_RULES;
+    const reasonId = syntax.reasonId ?? INVALID_REASON_USERNAME_GENERAL_RULES;
     return {
       email,
       valid: false,
@@ -110,9 +117,10 @@ export async function checkEmail(
   }
 
   if (opts.checkBlocklist) {
+    const blocklistDomains = options.blocklistDomains ?? [];
     if (
-      opts.blocklistDomains.length > 0 &&
-      opts.blocklistDomains.map((d) => d.toLowerCase()).includes(domain)
+      blocklistDomains.length > 0 &&
+      blocklistDomains.map((d) => d.toLowerCase()).includes(domain)
     ) {
       return {
         email,
@@ -147,8 +155,8 @@ export async function checkEmail(
       return {
         email,
         valid: false,
-        reasonId: INVALID_REASON_DOMAIN_IN_BLOCKLIST,
-        reason: INVALID_REASON_DOMAIN_IN_BLOCKLIST,
+        reasonId: INVALID_REASON_DOMAIN_DISPOSABLE,
+        reason: INVALID_REASON_DOMAIN_DISPOSABLE,
         message: `Disposable/temporary email domain: ${domain}`,
         checks: checksRan,
         durationMs: +(performance.now() - start).toFixed(2),
@@ -190,11 +198,13 @@ export async function checkEmail(
       const smtpResult = await smtpClient({
         email,
         mxRecords: mxResult.mxRecords ?? [],
-        timeoutMs: opts.smtpProbeTimeoutMs,
-        heloDomain: opts.smtpProbeHeloDomain,
-        mailFrom: opts.smtpProbeMailFrom,
-        maxMxHosts: opts.smtpProbeMaxMxHosts,
-        catchAllCheck: opts.smtpProbeCatchAllCheck,
+        timeoutMs: options.smtpProbeTimeoutMs ?? SMTP_DEFAULT_OPTIONS.timeoutMs,
+        // Security: these values are intentionally not user-configurable.
+        heloDomain: SMTP_DEFAULT_OPTIONS.heloDomain,
+        mailFrom: SMTP_DEFAULT_OPTIONS.mailFrom,
+        maxMxHosts: options.smtpProbeMaxMxHosts ?? SMTP_DEFAULT_OPTIONS.maxMxHosts,
+        catchAllCheck:
+          options.smtpProbeCatchAllCheck ?? SMTP_DEFAULT_OPTIONS.catchAllCheck,
       });
 
       const smtpDurationMs = +(performance.now() - start).toFixed(2);
